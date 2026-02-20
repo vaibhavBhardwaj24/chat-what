@@ -10,6 +10,9 @@ export function Header() {
   const { session, isLoaded } = useSession();
   const storeUser = useMutation(api.users.store);
 
+  // Keep this user's presence alive in Convex
+  usePresence();
+
   useEffect(() => {
     if (isLoaded && session) {
       storeUser().catch(console.error);

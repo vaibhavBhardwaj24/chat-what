@@ -4,9 +4,10 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSession } from "@clerk/nextjs";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { formatTimestamp } from "@/lib/format-timestamp";
 import { ArrowLeft, Send } from "lucide-react";
+import { Avatar } from "@/components/Sidebar";
 
 interface ChatWindowProps {
   conversationId: Id<"conversations">;
@@ -17,29 +18,53 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const { session } = useSession();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messages = useQuery(api.messages.list, { conversationId });
   const conversations = useQuery(api.conversations.list, session ? {} : "skip");
+  const typingUsers = useQuery(api.typing.getTypingUsers, { conversationId });
+  const onlineUsers = useQuery(api.presence.getOnlineUsers, session ? {} : "skip");
+
   const sendMessage = useMutation(api.messages.send);
+  const setTyping = useMutation(api.typing.setTyping);
 
-  // Get current user identity from Convex users list
-  const currentUser = useQuery(api.users.searchUsers, session ? { searchTerm: "" } : "skip");
-
-  // Find otherUser from conversations list
   const conversation = conversations?.find((c) => c._id === conversationId);
   const otherUser = conversation?.otherUser;
+  const isOtherUserOnline = otherUser?._id
+    ? (onlineUsers ?? []).includes(otherUser._id)
+    : false;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const handleTyping = useCallback(
+    (value: string) => {
+      setInput(value);
+      if (!value.trim()) return;
+
+      // Fire setTyping immediately, then debounce to avoid flooding
+      setTyping({ conversationId }).catch(console.error);
+
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        // typing stops — no-op; server side TTL handles expiry
+      }, 2000);
+    },
+    [conversationId, setTyping]
+  );
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed) return;
     setInput("");
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     await sendMessage({ conversationId, content: trimmed });
   };
+
+  // Active typers (excluding self, already filtered server-side)
+  const activeTypers = (typingUsers ?? []).filter(Boolean);
 
   return (
     <div className="flex flex-col flex-1 h-full bg-gray-50 min-w-0">
@@ -54,22 +79,21 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
         </button>
         {otherUser ? (
           <>
-            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden shadow-sm shrink-0">
-              {otherUser.imageUrl ? (
-                <img
-                  src={otherUser.imageUrl}
-                  alt={otherUser.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-blue-600 font-semibold text-sm">
-                  {otherUser.name.charAt(0).toUpperCase()}
-                </span>
-              )}
-            </div>
+            <Avatar
+              imageUrl={otherUser.imageUrl}
+              name={otherUser.name}
+              isOnline={isOtherUserOnline}
+            />
             <div>
               <p className="font-semibold text-gray-900 text-sm leading-tight">
                 {otherUser.name}
+              </p>
+              <p
+                className={`text-xs transition-colors ${
+                  isOtherUserOnline ? "text-green-600" : "text-gray-400"
+                }`}
+              >
+                {isOtherUserOnline ? "Online" : "Offline"}
               </p>
             </div>
           </>
@@ -113,9 +137,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
                       </span>
                     </div>
                   )}
-                  <div
-                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                  >
+                  <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                     <div
                       className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
                         isMe
@@ -134,6 +156,24 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
         )}
       </div>
 
+      {/* Typing Indicator */}
+      <div className="px-4 h-6 flex items-center">
+        {activeTypers.length > 0 && (
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>{activeTypers[0]?.name} is typing</span>
+            <span className="flex gap-0.5 items-center">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              ))}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Input Area */}
       <form
         onSubmit={handleSend}
@@ -143,7 +183,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
           type="text"
           placeholder="Type a message..."
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => handleTyping(e.target.value)}
           className="flex-1 px-4 py-2.5 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
         />
         <button
