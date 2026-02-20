@@ -211,7 +211,7 @@ function ConversationItem({
               </span>
             )}
             {(unreadCount ?? 0) > 0 && (
-              <span className="min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center rounded-full bg-blue-600 text-white text-[11px] font-bold leading-none">
+              <span className="min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full bg-blue-600 text-white text-[11px] font-bold leading-none">
                 {(unreadCount ?? 0) > 99 ? "99+" : unreadCount}
               </span>
             )}

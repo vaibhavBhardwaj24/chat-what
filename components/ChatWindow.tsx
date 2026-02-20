@@ -5,9 +5,9 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSession } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { formatTimestamp } from "@/lib/format-timestamp";
 import { ArrowLeft, Send, ChevronDown } from "lucide-react";
 import { Avatar } from "@/components/Sidebar";
+import { MessageBubble } from "@/components/MessageBubble";
 
 const SCROLL_THRESHOLD = 120; // px from bottom to be considered "near bottom"
 
@@ -195,26 +195,12 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
                 !prevMsg || msg._creationTime - prevMsg._creationTime > 5 * 60 * 1000;
 
               return (
-                <div key={msg._id}>
-                  {showTimestamp && (
-                    <div className="flex justify-center my-3">
-                      <span className="text-xs text-gray-400 bg-white px-3 py-1 rounded-full shadow-sm border">
-                        {formatTimestamp(msg._creationTime)}
-                      </span>
-                    </div>
-                  )}
-                  <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                        isMe
-                          ? "bg-blue-600 text-white rounded-br-sm"
-                          : "bg-white text-gray-800 rounded-bl-sm border"
-                      }`}
-                    >
-                      {msg.content}
-                    </div>
-                  </div>
-                </div>
+                <MessageBubble
+                  key={msg._id}
+                  message={msg}
+                  isMe={isMe}
+                  showTimestamp={showTimestamp}
+                />
               );
             })}
             <div ref={messagesEndRef} />
@@ -222,18 +208,20 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
         )}
       </div>
 
-      {/* ↓ New messages floating button */}
+      {/* ↓ New messages floating button — positioned relative to the outer flex column */}
       {showScrollButton && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-          <button
-            onClick={handleScrollToBottom}
-            className="pointer-events-auto flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-full shadow-lg transition"
-          >
-            <ChevronDown className="w-4 h-4" />
-            {newMessageCount > 0
-              ? `${newMessageCount} new message${newMessageCount > 1 ? "s" : ""}`
-              : "Scroll to bottom"}
-          </button>
+        <div className="relative h-0 overflow-visible z-10">
+          <div className="absolute -top-14 left-1/2 -translate-x-1/2">
+            <button
+              onClick={handleScrollToBottom}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-full shadow-lg transition"
+            >
+              <ChevronDown className="w-4 h-4" />
+              {newMessageCount > 0
+                ? `${newMessageCount} new message${newMessageCount > 1 ? "s" : ""}`
+                : "Scroll to bottom"}
+            </button>
+          </div>
         </div>
       )}
 
