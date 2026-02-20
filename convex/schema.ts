@@ -33,4 +33,11 @@ export default defineSchema({
   })
     .index("by_conversation", ["conversationId"])
     .index("by_conversation_user", ["conversationId", "userId"]),
+
+  lastRead: defineTable({
+    conversationId: v.id("conversations"),
+    userId: v.id("users"),
+    // _creationTime of the last message seen by this user
+    readTime: v.number(),
+  }).index("by_conversation_user", ["conversationId", "userId"]),
 });

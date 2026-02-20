@@ -6,8 +6,10 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useSession } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { formatTimestamp } from "@/lib/format-timestamp";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, ChevronDown } from "lucide-react";
 import { Avatar } from "@/components/Sidebar";
+
+const SCROLL_THRESHOLD = 120; // px from bottom to be considered "near bottom"
 
 interface ChatWindowProps {
   conversationId: Id<"conversations">;
@@ -17,7 +19,13 @@ interface ChatWindowProps {
 export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const { session } = useSession();
   const [input, setInput] = useState("");
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevMessageCountRef = useRef(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messages = useQuery(api.messages.list, { conversationId });
@@ -27,6 +35,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
 
   const sendMessage = useMutation(api.messages.send);
   const setTyping = useMutation(api.typing.setTyping);
+  const markRead = useMutation(api.lastRead.markRead);
 
   const conversation = conversations?.find((c) => c._id === conversationId);
   const otherUser = conversation?.otherUser;
@@ -34,22 +43,72 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
     ? (onlineUsers ?? []).includes(otherUser._id)
     : false;
 
+  // Mark as read when the conversation opens or changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    markRead({ conversationId }).catch(console.error);
+    setNewMessageCount(0);
+    setShowScrollButton(false);
+    prevMessageCountRef.current = 0;
+    isNearBottomRef.current = true;
+    scrollToBottom("instant");
+  }, [conversationId, markRead]);
+
+  // Smart scroll: auto-scroll only when near bottom; otherwise show button
+  useEffect(() => {
+    if (!messages) return;
+    const currentCount = messages.length;
+    const prevCount = prevMessageCountRef.current;
+
+    if (currentCount > prevCount) {
+      const newCount = currentCount - prevCount;
+      prevMessageCountRef.current = currentCount;
+
+      if (isNearBottomRef.current) {
+        // Near bottom — scroll automatically and mark read
+        scrollToBottom("smooth");
+        markRead({ conversationId }).catch(console.error);
+        setNewMessageCount(0);
+      } else {
+        // Scrolled up — show the "new messages" button
+        setNewMessageCount((n) => n + newCount);
+        setShowScrollButton(true);
+      }
+    } else {
+      prevMessageCountRef.current = currentCount;
+    }
+  }, [messages, conversationId, markRead]);
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  const handleScrollToBottom = () => {
+    scrollToBottom("smooth");
+    setShowScrollButton(false);
+    setNewMessageCount(0);
+    markRead({ conversationId }).catch(console.error);
+  };
+
+  const handleScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distanceFromBottom <= SCROLL_THRESHOLD;
+
+    if (isNearBottomRef.current) {
+      setShowScrollButton(false);
+      setNewMessageCount(0);
+      markRead({ conversationId }).catch(console.error);
+    }
+  }, [conversationId, markRead]);
 
   const handleTyping = useCallback(
     (value: string) => {
       setInput(value);
       if (!value.trim()) return;
-
-      // Fire setTyping immediately, then debounce to avoid flooding
       setTyping({ conversationId }).catch(console.error);
-
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        // typing stops — no-op; server side TTL handles expiry
-      }, 2000);
+      typingTimeoutRef.current = setTimeout(() => {}, 2000);
     },
     [conversationId, setTyping]
   );
@@ -61,9 +120,13 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
     setInput("");
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     await sendMessage({ conversationId, content: trimmed });
+    // After sending, always scroll to bottom
+    isNearBottomRef.current = true;
+    setShowScrollButton(false);
+    setNewMessageCount(0);
+    setTimeout(() => scrollToBottom("smooth"), 50);
   };
 
-  // Active typers (excluding self, already filtered server-side)
   const activeTypers = (typingUsers ?? []).filter(Boolean);
 
   return (
@@ -103,7 +166,11 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-2 relative"
+      >
         {messages === undefined ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-2 text-gray-400">
@@ -125,8 +192,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
               const isMe = msg.senderId !== otherUser?._id;
               const prevMsg = messages[i - 1];
               const showTimestamp =
-                !prevMsg ||
-                msg._creationTime - prevMsg._creationTime > 5 * 60 * 1000;
+                !prevMsg || msg._creationTime - prevMsg._creationTime > 5 * 60 * 1000;
 
               return (
                 <div key={msg._id}>
@@ -156,8 +222,23 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
         )}
       </div>
 
+      {/* ↓ New messages floating button */}
+      {showScrollButton && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+          <button
+            onClick={handleScrollToBottom}
+            className="pointer-events-auto flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-full shadow-lg transition"
+          >
+            <ChevronDown className="w-4 h-4" />
+            {newMessageCount > 0
+              ? `${newMessageCount} new message${newMessageCount > 1 ? "s" : ""}`
+              : "Scroll to bottom"}
+          </button>
+        </div>
+      )}
+
       {/* Typing Indicator */}
-      <div className="px-4 h-6 flex items-center">
+      <div className="px-4 h-6 flex items-center shrink-0">
         {activeTypers.length > 0 && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <span>{activeTypers[0]?.name} is typing</span>

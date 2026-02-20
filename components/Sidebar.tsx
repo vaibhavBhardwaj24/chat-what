@@ -30,10 +30,18 @@ export function Sidebar({
   const onlineSet = new Set(onlineUsers ?? []);
 
   const getOrCreate = useMutation(api.conversations.getOrCreate);
+  const markRead = useMutation(api.lastRead.markRead);
+
+  const handleSelectConversation = async (id: Id<"conversations">) => {
+    onSelectConversation(id);
+    await markRead({ conversationId: id }).catch(console.error);
+  };
 
   const handleUserClick = async (userId: Id<"users">) => {
     const convId = await getOrCreate({ otherUserId: userId });
-    onSelectConversation(convId as Id<"conversations">);
+    const id = convId as Id<"conversations">;
+    onSelectConversation(id);
+    await markRead({ conversationId: id }).catch(console.error);
     setTab("chats");
     setSearchTerm("");
   };
@@ -66,7 +74,7 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Search bar (only on search tab) */}
+      {/* Search bar */}
       {tab === "search" && (
         <div className="p-3 border-b bg-gray-50/50">
           <div className="relative">
@@ -100,91 +108,124 @@ export function Sidebar({
             <ul className="divide-y">
               {conversations.map((c) => {
                 const isOnline = c.otherUser?._id ? onlineSet.has(c.otherUser._id) : false;
+                const isSelected = selectedConversationId === c._id;
                 return (
-                  <li
+                  <ConversationItem
                     key={c._id}
-                    onClick={() => onSelectConversation(c._id)}
-                    className={`p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition ${
-                      selectedConversationId === c._id ? "bg-blue-50" : ""
-                    }`}
-                  >
-                    <Avatar
-                      imageUrl={c.otherUser?.imageUrl}
-                      name={c.otherUser?.name ?? "?"}
-                      isOnline={isOnline}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {c.otherUser?.name ?? "Unknown"}
-                        </p>
-                        {c.lastMessage && (
-                          <span className="text-xs text-gray-400 shrink-0 ml-2">
-                            {formatTimestamp(c.lastMessage._creationTime)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">
-                        {c.lastMessage ? c.lastMessage.content : "No messages yet"}
-                      </p>
-                    </div>
-                  </li>
+                    conversation={c}
+                    isOnline={isOnline}
+                    isSelected={isSelected}
+                    onSelect={() => handleSelectConversation(c._id)}
+                  />
                 );
               })}
             </ul>
           )
+        ) : searchResults === undefined ? (
+          <LoadingSkeleton />
+        ) : searchTerm === "" ? (
+          <EmptyState
+            icon="🔍"
+            title="Search for people"
+            body="Type a name above to find users to chat with."
+          />
+        ) : searchResults.length === 0 ? (
+          <EmptyState
+            icon="😔"
+            title="No users found"
+            body={`No results for "${searchTerm}". Try a different name.`}
+          />
         ) : (
-          // Search tab
-          searchResults === undefined ? (
-            <LoadingSkeleton />
-          ) : searchTerm === "" ? (
-            <EmptyState
-              icon="🔍"
-              title="Search for people"
-              body="Type a name above to find users to chat with."
-            />
-          ) : searchResults.length === 0 ? (
-            <EmptyState
-              icon="😔"
-              title="No users found"
-              body={`No results for "${searchTerm}". Try a different name.`}
-            />
-          ) : (
-            <ul className="divide-y">
-              {searchResults.map((user) => {
-                const isOnline = onlineSet.has(user._id);
-                return (
-                  <li
-                    key={user._id}
-                    onClick={() => handleUserClick(user._id)}
-                    className="p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition"
-                  >
-                    <Avatar imageUrl={user.imageUrl} name={user.name} isOnline={isOnline} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {user.name}
-                        </p>
-                        {isOnline && (
-                          <span className="text-xs text-green-600 font-medium shrink-0">Online</span>
-                        )}
-                      </div>
-                      {user.email && (
-                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+          <ul className="divide-y">
+            {searchResults.map((user) => {
+              const isOnline = onlineSet.has(user._id);
+              return (
+                <li
+                  key={user._id}
+                  onClick={() => handleUserClick(user._id)}
+                  className="p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition"
+                >
+                  <Avatar imageUrl={user.imageUrl} name={user.name} isOnline={isOnline} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                      {isOnline && (
+                        <span className="text-xs text-green-600 font-medium shrink-0">Online</span>
                       )}
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )
+                    {user.email && (
+                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
     </aside>
   );
 }
 
-function Avatar({
+// Separate component so each conversation queries its own unread count independently
+function ConversationItem({
+  conversation,
+  isOnline,
+  isSelected,
+  onSelect,
+}: {
+  conversation: {
+    _id: Id<"conversations">;
+    otherUser?: { _id: Id<"users">; name: string; imageUrl?: string | null } | null;
+    lastMessage?: { content: string; _creationTime: number } | null;
+  };
+  isOnline: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const unreadCount = useQuery(api.lastRead.getUnreadCount, {
+    conversationId: conversation._id,
+  });
+
+  return (
+    <li
+      onClick={onSelect}
+      className={`p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition ${
+        isSelected ? "bg-blue-50" : ""
+      }`}
+    >
+      <Avatar
+        imageUrl={conversation.otherUser?.imageUrl}
+        name={conversation.otherUser?.name ?? "?"}
+        isOnline={isOnline}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-center gap-2">
+          <p className={`text-sm truncate ${(unreadCount ?? 0) > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
+            {conversation.otherUser?.name ?? "Unknown"}
+          </p>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {conversation.lastMessage && (
+              <span className="text-xs text-gray-400">
+                {formatTimestamp(conversation.lastMessage._creationTime)}
+              </span>
+            )}
+            {(unreadCount ?? 0) > 0 && (
+              <span className="min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center rounded-full bg-blue-600 text-white text-[11px] font-bold leading-none">
+                {(unreadCount ?? 0) > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </div>
+        </div>
+        <p className={`text-xs truncate mt-0.5 ${(unreadCount ?? 0) > 0 ? "text-gray-700 font-medium" : "text-gray-500"}`}>
+          {conversation.lastMessage ? conversation.lastMessage.content : "No messages yet"}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+export function Avatar({
   imageUrl,
   name,
   isOnline = false,
@@ -211,15 +252,7 @@ function Avatar({
   );
 }
 
-function EmptyState({
-  icon,
-  title,
-  body,
-}: {
-  icon: string;
-  title: string;
-  body: string;
-}) {
+function EmptyState({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-2 text-gray-400">
       <span className="text-4xl">{icon}</span>
@@ -244,6 +277,3 @@ function LoadingSkeleton() {
     </div>
   );
 }
-
-// Re-export Avatar for use in ChatWindow
-export { Avatar };
