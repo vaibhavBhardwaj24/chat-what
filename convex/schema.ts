@@ -12,5 +12,12 @@ export default defineSchema({
   conversations: defineTable({
     user1: v.id("users"),
     user2: v.id("users"),
+    lastMessageId: v.optional(v.id("messages")),
   }).index("by_users", ["user1", "user2"]),
+
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    senderId: v.id("users"),
+    content: v.string(),
+  }).index("by_conversation", ["conversationId"]),
 });
