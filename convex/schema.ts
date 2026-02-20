@@ -20,4 +20,17 @@ export default defineSchema({
     senderId: v.id("users"),
     content: v.string(),
   }).index("by_conversation", ["conversationId"]),
+
+  presence: defineTable({
+    userId: v.id("users"),
+    lastSeen: v.number(),
+  }).index("by_user", ["userId"]),
+
+  typing: defineTable({
+    conversationId: v.id("conversations"),
+    userId: v.id("users"),
+    lastTyped: v.number(),
+  })
+    .index("by_conversation", ["conversationId"])
+    .index("by_conversation_user", ["conversationId", "userId"]),
 });

@@ -4,6 +4,7 @@ import { UserButton, SignInButton, useSession } from "@clerk/nextjs";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useEffect } from "react";
+import { usePresence } from "@/hooks/use-presence";
 
 export function Header() {
   const { session, isLoaded } = useSession();
