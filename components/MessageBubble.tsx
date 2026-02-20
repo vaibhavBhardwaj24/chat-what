@@ -3,11 +3,18 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useUser } from "@clerk/nextjs";
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { formatTimestamp } from "@/lib/format-timestamp";
 
 const ALLOWED_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
+
+interface Member {
+  _id: Id<"users">;
+  name: string;
+  imageUrl?: string | null;
+}
 
 interface MessageBubbleProps {
   message: {
@@ -18,23 +25,28 @@ interface MessageBubbleProps {
     _creationTime: number;
   };
   isMe: boolean;
-  otherUserId?: Id<"users">;
   showTimestamp: boolean;
+  isGroup?: boolean;
+  members?: Member[];
 }
 
 export function MessageBubble({
   message,
   isMe,
   showTimestamp,
+  isGroup = false,
+  members = [],
 }: MessageBubbleProps) {
   const [hover, setHover] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const { user: clerkUser } = useUser();
 
-  const reactions = useQuery(api.reactions.listForMessage, {
-    messageId: message._id,
-  });
+  const reactions = useQuery(api.reactions.listForMessage, { messageId: message._id });
   const toggleReaction = useMutation(api.reactions.toggleReaction);
   const deleteMessage = useMutation(api.messages.deleteMessage);
+
+  // For group chats, look up who sent this
+  const sender = isGroup ? members.find((m) => m._id === message.senderId) : null;
 
   const handleDelete = async () => {
     await deleteMessage({ messageId: message._id }).catch(console.error);
@@ -55,20 +67,24 @@ export function MessageBubble({
         </div>
       )}
 
+      {/* Sender name label in group chats */}
+      {isGroup && !isMe && sender && (
+        <p className="text-xs text-gray-500 ml-1 mb-0.5">{sender.name}</p>
+      )}
+
       <div
         className={`flex ${isMe ? "justify-end" : "justify-start"} group`}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => { setHover(false); setPickerOpen(false); }}
       >
         <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[75%]`}>
-          {/* Action row — appears on hover */}
+          {/* Hover actions */}
           {!message.deleted && (
             <div
               className={`flex items-center gap-1 mb-1 transition-opacity duration-150 ${
                 hover ? "opacity-100" : "opacity-0 pointer-events-none"
               } ${isMe ? "flex-row-reverse" : "flex-row"}`}
             >
-              {/* Emoji picker trigger */}
               <div className="relative">
                 <button
                   onClick={() => setPickerOpen((p) => !p)}
@@ -95,8 +111,6 @@ export function MessageBubble({
                   </div>
                 )}
               </div>
-
-              {/* Delete button — only for own messages */}
               {isMe && (
                 <button
                   onClick={handleDelete}
@@ -113,7 +127,7 @@ export function MessageBubble({
           <div
             className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
               message.deleted
-                ? "bg-gray-100 text-gray-400 border border-dashed rounded-2xl"
+                ? "bg-gray-100 text-gray-400 border border-dashed"
                 : isMe
                 ? "bg-blue-600 text-white rounded-br-sm"
                 : "bg-white text-gray-800 rounded-bl-sm border"

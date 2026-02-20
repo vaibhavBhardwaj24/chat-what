@@ -6,20 +6,19 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useState } from "react";
 import { useSession } from "@clerk/nextjs";
 import { formatTimestamp } from "@/lib/format-timestamp";
-import { MessageSquare, Search, Users } from "lucide-react";
+import { MessageSquare, Users, Search, Plus } from "lucide-react";
+import { CreateGroupModal } from "@/components/CreateGroupModal";
 
 interface SidebarProps {
   selectedConversationId: Id<"conversations"> | null;
   onSelectConversation: (id: Id<"conversations">) => void;
 }
 
-export function Sidebar({
-  selectedConversationId,
-  onSelectConversation,
-}: SidebarProps) {
+export function Sidebar({ selectedConversationId, onSelectConversation }: SidebarProps) {
   const { session } = useSession();
   const [searchTerm, setSearchTerm] = useState("");
   const [tab, setTab] = useState<"chats" | "search">("chats");
+  const [showGroupModal, setShowGroupModal] = useState(false);
 
   const conversations = useQuery(api.conversations.list, session ? {} : "skip");
   const searchResults = useQuery(
@@ -46,128 +45,133 @@ export function Sidebar({
     setSearchTerm("");
   };
 
+  const handleGroupCreated = (id: Id<"conversations">) => {
+    onSelectConversation(id);
+    setTab("chats");
+  };
+
   return (
-    <aside className="w-full md:w-80 border-r bg-white flex flex-col h-full shrink-0">
-      {/* Tabs */}
-      <div className="flex border-b">
-        <button
-          onClick={() => setTab("chats")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
-            tab === "chats"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <MessageSquare className="w-4 h-4" />
-          Chats
-        </button>
-        <button
-          onClick={() => setTab("search")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
-            tab === "search"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          People
-        </button>
-      </div>
-
-      {/* Search bar */}
-      {tab === "search" && (
-        <div className="p-3 border-b bg-gray-50/50">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search people..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              autoFocus
-              className="w-full pl-9 pr-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            />
-          </div>
+    <>
+      <aside className="w-full md:w-80 border-r bg-white flex flex-col h-full shrink-0">
+        {/* Header row with tabs + New Group button */}
+        <div className="flex items-center border-b">
+          <button
+            onClick={() => setTab("chats")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              tab === "chats" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Chats
+          </button>
+          <button
+            onClick={() => setTab("search")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              tab === "search" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            People
+          </button>
+          <button
+            onClick={() => setShowGroupModal(true)}
+            className="px-3 py-3 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition"
+            title="New group chat"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
         </div>
-      )}
 
-      {/* List Area */}
-      <div className="flex-1 overflow-y-auto">
-        {!session ? (
-          <EmptyState icon="🔐" title="Sign in" body="Please sign in to see your chats." />
-        ) : tab === "chats" ? (
-          conversations === undefined ? (
+        {/* Search input (People tab) */}
+        {tab === "search" && (
+          <div className="p-3 border-b bg-gray-50/50">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search people..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                autoFocus
+                className="w-full pl-9 pr-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {!session ? (
+            <EmptyState icon="🔐" title="Sign in" body="Please sign in to see your chats." />
+          ) : tab === "chats" ? (
+            conversations === undefined ? (
+              <LoadingSkeleton />
+            ) : conversations.length === 0 ? (
+              <EmptyState
+                icon="💬"
+                title="No conversations yet"
+                body='Go to "People" to start a chat, or press + to create a group.'
+              />
+            ) : (
+              <ul className="divide-y">
+                {conversations.map((c) => {
+                  const isGroup = c.isGroup;
+                  const isOnline = !isGroup && c.otherUser?._id ? onlineSet.has(c.otherUser._id) : false;
+                  return (
+                    <ConversationItem
+                      key={c._id}
+                      conversation={c}
+                      isOnline={isOnline}
+                      isSelected={selectedConversationId === c._id}
+                      onSelect={() => handleSelectConversation(c._id)}
+                    />
+                  );
+                })}
+              </ul>
+            )
+          ) : searchResults === undefined ? (
             <LoadingSkeleton />
-          ) : conversations.length === 0 ? (
-            <EmptyState
-              icon="💬"
-              title="No conversations yet"
-              body='Switch to "People" to find someone and start chatting!'
-            />
+          ) : searchTerm === "" ? (
+            <EmptyState icon="🔍" title="Search for people" body="Type a name above to find users." />
+          ) : searchResults.length === 0 ? (
+            <EmptyState icon="😔" title="No users found" body={`No results for "${searchTerm}".`} />
           ) : (
             <ul className="divide-y">
-              {conversations.map((c) => {
-                const isOnline = c.otherUser?._id ? onlineSet.has(c.otherUser._id) : false;
-                const isSelected = selectedConversationId === c._id;
+              {searchResults.map((user) => {
+                const isOnline = onlineSet.has(user._id);
                 return (
-                  <ConversationItem
-                    key={c._id}
-                    conversation={c}
-                    isOnline={isOnline}
-                    isSelected={isSelected}
-                    onSelect={() => handleSelectConversation(c._id)}
-                  />
+                  <li
+                    key={user._id}
+                    onClick={() => handleUserClick(user._id)}
+                    className="p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition"
+                  >
+                    <Avatar imageUrl={user.imageUrl} name={user.name} isOnline={isOnline} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                        {isOnline && <span className="text-xs text-green-600 font-medium shrink-0">Online</span>}
+                      </div>
+                      {user.email && <p className="text-xs text-gray-500 truncate">{user.email}</p>}
+                    </div>
+                  </li>
                 );
               })}
             </ul>
-          )
-        ) : searchResults === undefined ? (
-          <LoadingSkeleton />
-        ) : searchTerm === "" ? (
-          <EmptyState
-            icon="🔍"
-            title="Search for people"
-            body="Type a name above to find users to chat with."
-          />
-        ) : searchResults.length === 0 ? (
-          <EmptyState
-            icon="😔"
-            title="No users found"
-            body={`No results for "${searchTerm}". Try a different name.`}
-          />
-        ) : (
-          <ul className="divide-y">
-            {searchResults.map((user) => {
-              const isOnline = onlineSet.has(user._id);
-              return (
-                <li
-                  key={user._id}
-                  onClick={() => handleUserClick(user._id)}
-                  className="p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition"
-                >
-                  <Avatar imageUrl={user.imageUrl} name={user.name} isOnline={isOnline} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
-                      {isOnline && (
-                        <span className="text-xs text-green-600 font-medium shrink-0">Online</span>
-                      )}
-                    </div>
-                    {user.email && (
-                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </aside>
+          )}
+        </div>
+      </aside>
+
+      {showGroupModal && (
+        <CreateGroupModal
+          onClose={() => setShowGroupModal(false)}
+          onCreated={handleGroupCreated}
+        />
+      )}
+    </>
   );
 }
 
-// Separate component so each conversation queries its own unread count independently
+// Each conversation item subscribes to its own unread count
 function ConversationItem({
   conversation,
   isOnline,
@@ -176,33 +180,42 @@ function ConversationItem({
 }: {
   conversation: {
     _id: Id<"conversations">;
+    isGroup: boolean;
+    name?: string | null;
+    memberCount?: number;
     otherUser?: { _id: Id<"users">; name: string; imageUrl?: string | null } | null;
-    lastMessage?: { content: string; _creationTime: number } | null;
+    lastMessage?: { content: string; _creationTime: number; deleted?: boolean } | null;
   };
   isOnline: boolean;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const unreadCount = useQuery(api.lastRead.getUnreadCount, {
-    conversationId: conversation._id,
-  });
+  const unreadCount = useQuery(api.lastRead.getUnreadCount, { conversationId: conversation._id });
+
+  const displayName = conversation.isGroup
+    ? (conversation.name ?? "Group Chat")
+    : (conversation.otherUser?.name ?? "Unknown");
+
+  const subtitle = conversation.isGroup
+    ? `${conversation.memberCount ?? 0} members`
+    : conversation.lastMessage
+    ? (conversation.lastMessage.deleted ? "This message was deleted" : conversation.lastMessage.content)
+    : "No messages yet";
 
   return (
     <li
       onClick={onSelect}
-      className={`p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition ${
-        isSelected ? "bg-blue-50" : ""
-      }`}
+      className={`p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition ${isSelected ? "bg-blue-50" : ""}`}
     >
-      <Avatar
-        imageUrl={conversation.otherUser?.imageUrl}
-        name={conversation.otherUser?.name ?? "?"}
-        isOnline={isOnline}
-      />
+      {conversation.isGroup ? (
+        <GroupAvatar name={displayName} />
+      ) : (
+        <Avatar imageUrl={conversation.otherUser?.imageUrl} name={displayName} isOnline={isOnline} />
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center gap-2">
           <p className={`text-sm truncate ${(unreadCount ?? 0) > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
-            {conversation.otherUser?.name ?? "Unknown"}
+            {displayName}
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
             {conversation.lastMessage && (
@@ -217,8 +230,8 @@ function ConversationItem({
             )}
           </div>
         </div>
-        <p className={`text-xs truncate mt-0.5 ${(unreadCount ?? 0) > 0 ? "text-gray-700 font-medium" : "text-gray-500"}`}>
-          {conversation.lastMessage ? conversation.lastMessage.content : "No messages yet"}
+        <p className={`text-xs truncate mt-0.5 ${(unreadCount ?? 0) > 0 ? "text-gray-700 font-medium" : "text-gray-500"} ${conversation.lastMessage?.deleted ? "italic" : ""}`}>
+          {subtitle}
         </p>
       </div>
     </li>
@@ -226,9 +239,7 @@ function ConversationItem({
 }
 
 export function Avatar({
-  imageUrl,
-  name,
-  isOnline = false,
+  imageUrl, name, isOnline = false,
 }: {
   imageUrl?: string | null;
   name: string;
@@ -240,14 +251,20 @@ export function Avatar({
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
         ) : (
-          <span className="text-blue-600 font-semibold text-sm">
-            {name.charAt(0).toUpperCase()}
-          </span>
+          <span className="text-blue-600 font-semibold text-sm">{name.charAt(0).toUpperCase()}</span>
         )}
       </div>
       {isOnline && (
         <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
       )}
+    </div>
+  );
+}
+
+function GroupAvatar({ name }: { name: string }) {
+  return (
+    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center shadow-sm shrink-0">
+      <Users className="w-5 h-5 text-purple-600" />
     </div>
   );
 }

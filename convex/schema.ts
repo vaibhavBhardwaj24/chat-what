@@ -8,12 +8,15 @@ export default defineSchema({
     imageUrl: v.optional(v.string()),
     email: v.optional(v.string()),
   }).index("by_token", ["tokenIdentifier"]),
-  
+
+  // Supports both DMs (isGroup=false, 2 members) and group chats (isGroup=true, N members)
   conversations: defineTable({
-    user1: v.id("users"),
-    user2: v.id("users"),
+    name: v.optional(v.string()),        // group name; undefined for DMs
+    isGroup: v.boolean(),
+    memberIds: v.array(v.id("users")),
+    creatorId: v.optional(v.id("users")), // group creator
     lastMessageId: v.optional(v.id("messages")),
-  }).index("by_users", ["user1", "user2"]),
+  }),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
@@ -46,7 +49,6 @@ export default defineSchema({
   lastRead: defineTable({
     conversationId: v.id("conversations"),
     userId: v.id("users"),
-    // _creationTime of the last message seen by this user
     readTime: v.number(),
   }).index("by_conversation_user", ["conversationId", "userId"]),
 });
