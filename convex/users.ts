@@ -6,7 +6,7 @@ export const store = mutation({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error("Called storeUser without authentication present");
+      return null;
     }
 
     // Check if we've already stored this identity before.

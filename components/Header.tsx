@@ -1,23 +1,24 @@
 "use client";
 
 import { UserButton, SignInButton, useSession } from "@clerk/nextjs";
-import { useMutation } from "convex/react";
+import { useMutation, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useEffect } from "react";
 import { usePresence } from "@/hooks/use-presence";
 
 export function Header() {
   const { session, isLoaded } = useSession();
+  const { isAuthenticated } = useConvexAuth();
   const storeUser = useMutation(api.users.store);
 
   // Keep this user's presence alive in Convex
   usePresence();
 
   useEffect(() => {
-    if (isLoaded && session) {
+    if (isAuthenticated) {
       storeUser().catch(console.error);
     }
-  }, [isLoaded, session, storeUser]);
+  }, [isAuthenticated, storeUser]);
 
   return (
     <header className="flex h-16 items-center justify-between border-b px-6 bg-white shrink-0 shadow-sm">
