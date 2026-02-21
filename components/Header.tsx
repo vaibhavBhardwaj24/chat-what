@@ -15,8 +15,12 @@ export function Header() {
   usePresence();
 
   useEffect(() => {
+    console.log("Header isAuthenticated:", isAuthenticated);
     if (isAuthenticated) {
-      storeUser().catch(console.error);
+      console.log("Triggering storeUser...");
+      storeUser()
+        .then((id) => console.log("storeUser successful, id:", id))
+        .catch((err) => console.error("storeUser failed:", err));
     }
   }, [isAuthenticated, storeUser]);
 

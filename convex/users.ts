@@ -5,6 +5,7 @@ export const store = mutation({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
+    console.log("storeUser identity received:", !!identity);
     if (!identity) {
       return null;
     }

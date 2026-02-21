@@ -3,9 +3,8 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useUser } from "@clerk/nextjs";
-import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { useState, useRef } from "react";
+import { SmileIcon, Trash2 } from "lucide-react";
 import { formatTimestamp } from "@/lib/format-timestamp";
 
 const ALLOWED_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
@@ -39,7 +38,7 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [hover, setHover] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const { user: clerkUser } = useUser();
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const reactions = useQuery(api.reactions.listForMessage, { messageId: message._id });
   const toggleReaction = useMutation(api.reactions.toggleReaction);
@@ -47,6 +46,22 @@ export function MessageBubble({
 
   // For group chats, look up who sent this
   const sender = isGroup ? members.find((m) => m._id === message.senderId) : null;
+
+  const handleMouseEnter = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setHover(true);
+  };
+
+  const handleMouseLeave = () => {
+    // Wait 500ms before closing to make it "stay a little longer"
+    closeTimeoutRef.current = setTimeout(() => {
+      setHover(false);
+      setPickerOpen(false);
+    }, 300);
+  };
 
   const handleDelete = async () => {
     await deleteMessage({ messageId: message._id }).catch(console.error);
@@ -74,30 +89,28 @@ export function MessageBubble({
 
       <div
         className={`flex ${isMe ? "justify-end" : "justify-start"} group`}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => { setHover(false); setPickerOpen(false); }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[75%]`}>
           {/* Hover actions */}
           {!message.deleted && (
             <div
-              className={`flex items-center gap-1 mb-1 transition-opacity duration-150 ${
-                hover ? "opacity-100" : "opacity-0 pointer-events-none"
-              } ${isMe ? "flex-row-reverse" : "flex-row"}`}
+              className={`flex items-center gap-1 mb-1 transition-opacity duration-150 ${hover ? "opacity-100" : "opacity-0 pointer-events-none"
+                } ${isMe ? "flex-row-reverse" : "flex-row"}`}
             >
               <div className="relative">
                 <button
                   onClick={() => setPickerOpen((p) => !p)}
-                  className="text-base leading-none p-1 rounded hover:bg-gray-100 transition"
+                  className="text-base font-thin  leading-none p-1 rounded hover:bg-gray-100 transition "
                   title="Add reaction"
                 >
-                  😊
+                  <SmileIcon />
                 </button>
                 {pickerOpen && (
                   <div
-                    className={`absolute bottom-full mb-1 flex gap-1 bg-white border rounded-xl shadow-lg px-2 py-1.5 z-20 ${
-                      isMe ? "right-0" : "left-0"
-                    }`}
+                    className={`absolute bottom-full mb-1 flex gap-1 bg-white border rounded-xl shadow-lg px-2 py-1.5 z-20 ${isMe ? "right-0" : "left-0"
+                      }`}
                   >
                     {ALLOWED_EMOJIS.map((emoji) => (
                       <button
@@ -125,13 +138,12 @@ export function MessageBubble({
 
           {/* Bubble */}
           <div
-            className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${
-              message.deleted
+            className={`px-4 py-2 rounded-2xl text-sm leading-relaxed shadow-sm ${message.deleted
                 ? "bg-gray-100 text-gray-400 border border-dashed"
                 : isMe
-                ? "bg-blue-600 text-white rounded-br-sm"
-                : "bg-white text-gray-800 rounded-bl-sm border"
-            }`}
+                  ? "bg-blue-600 text-white rounded-br-sm"
+                  : "bg-white text-gray-800 rounded-bl-sm border"
+              }`}
           >
             {message.deleted ? (
               <span className="italic">This message was deleted</span>
@@ -147,11 +159,10 @@ export function MessageBubble({
                 <button
                   key={emoji}
                   onClick={() => handleToggleReaction(emoji)}
-                  className={`flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full border transition ${
-                    reactedByMe
+                  className={`flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full border transition ${reactedByMe
                       ? "bg-blue-50 border-blue-300 text-blue-700"
                       : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-                  }`}
+                    }`}
                 >
                   <span>{emoji}</span>
                   <span className="font-medium">{count}</span>
