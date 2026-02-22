@@ -77,3 +77,45 @@ export const getUnreadCount = query({
     ).length;
   },
 });
+
+/**
+ * Returns a list of users (excluding the current user) who have read past the
+ * last message in the conversation — used to render read receipt avatars.
+ */
+export const getReaders = query({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+
+    const me = await ctx.db
+      .query("users")
+      .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
+      .unique();
+    if (!me) return [];
+
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || !conv.lastMessageId) return [];
+
+    const lastMessage = await ctx.db.get(conv.lastMessageId);
+    if (!lastMessage) return [];
+
+    const allReadRecords = await ctx.db
+      .query("lastRead")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", args.conversationId)
+      )
+      .collect();
+
+    const readers: { _id: string; name: string; imageUrl?: string | null }[] = [];
+    for (const record of allReadRecords) {
+      if (record.userId === me._id) continue;
+      if (record.readTime < lastMessage._creationTime) continue;
+      const user = await ctx.db.get(record.userId);
+      if (user) {
+        readers.push({ _id: user._id, name: user.name, imageUrl: user.imageUrl });
+      }
+    }
+    return readers;
+  },
+});

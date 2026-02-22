@@ -52,12 +52,12 @@ export default function Home() {
           />
         ) : (
           /* Desktop empty state when no convo selected */
-          <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-center p-8 gap-3">
+          <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-center p-8 gap-3">
             <span className="text-6xl">💬</span>
-            <h2 className="text-xl font-semibold text-gray-700">
+            <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-200">
               Welcome to ChatApp
             </h2>
-            <p className="text-gray-500 text-sm max-w-xs">
+            <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs">
               Select a conversation from the sidebar, or search for someone new
               to start chatting.
             </p>

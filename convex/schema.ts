@@ -9,12 +9,11 @@ export default defineSchema({
     email: v.optional(v.string()),
   }).index("by_token", ["tokenIdentifier"]),
 
-  // Supports both DMs (isGroup=false, 2 members) and group chats (isGroup=true, N members)
   conversations: defineTable({
-    name: v.optional(v.string()),        // group name; undefined for DMs
+    name: v.optional(v.string()),
     isGroup: v.boolean(),
     memberIds: v.array(v.id("users")),
-    creatorId: v.optional(v.id("users")), // group creator
+    creatorId: v.optional(v.id("users")),
     lastMessageId: v.optional(v.id("messages")),
   }),
 
@@ -23,6 +22,7 @@ export default defineSchema({
     senderId: v.id("users"),
     content: v.string(),
     deleted: v.optional(v.boolean()),
+    editedAt: v.optional(v.number()),
   }).index("by_conversation", ["conversationId"]),
 
   reactions: defineTable({
@@ -51,4 +51,11 @@ export default defineSchema({
     userId: v.id("users"),
     readTime: v.number(),
   }).index("by_conversation_user", ["conversationId", "userId"]),
+
+  pins: defineTable({
+    userId: v.id("users"),
+    conversationId: v.id("conversations"),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_conversation", ["userId", "conversationId"]),
 });

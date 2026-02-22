@@ -3,11 +3,12 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useSession } from "@clerk/nextjs";
 import { formatTimestamp } from "@/lib/format-timestamp";
-import { MessageSquare, Users, Search, Plus } from "lucide-react";
+import { MessageSquare, Users, Search, Plus, Pin, PinOff } from "lucide-react";
 import { CreateGroupModal } from "@/components/CreateGroupModal";
+import { SearchModal } from "@/components/SearchModal";
 
 interface SidebarProps {
   selectedConversationId: Id<"conversations"> | null;
@@ -19,17 +20,21 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
   const [searchTerm, setSearchTerm] = useState("");
   const [tab, setTab] = useState<"chats" | "search">("chats");
   const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
 
   const conversations = useQuery(api.conversations.list, session ? {} : "skip");
+  const pinnedIds = useQuery(api.pins.getPinnedIds, session ? {} : "skip");
   const searchResults = useQuery(
     api.users.searchUsers,
     session && tab === "search" ? { searchTerm } : "skip"
   );
   const onlineUsers = useQuery(api.presence.getOnlineUsers, session ? {} : "skip");
   const onlineSet = new Set(onlineUsers ?? []);
+  const pinnedSet = new Set(pinnedIds ?? []);
 
   const getOrCreate = useMutation(api.conversations.getOrCreate);
   const markRead = useMutation(api.lastRead.markRead);
+  const togglePin = useMutation(api.pins.togglePin);
 
   const handleSelectConversation = async (id: Id<"conversations">) => {
     onSelectConversation(id);
@@ -50,15 +55,18 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
     setTab("chats");
   };
 
+  const pinned = (conversations ?? []).filter((c) => pinnedSet.has(c._id));
+  const unpinned = (conversations ?? []).filter((c) => !pinnedSet.has(c._id));
+
   return (
     <>
-      <aside className="w-full md:w-80 border-r bg-white flex flex-col h-full shrink-0">
-        {/* Header row with tabs + New Group button */}
-        <div className="flex items-center border-b">
+      <aside className="w-full md:w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col h-full shrink-0">
+        {/* Header row */}
+        <div className="flex items-center border-b border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setTab("chats")}
             className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
-              tab === "chats" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+              tab === "chats" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             }`}
           >
             <MessageSquare className="w-4 h-4" />
@@ -67,7 +75,7 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
           <button
             onClick={() => setTab("search")}
             className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
-              tab === "search" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 hover:text-gray-700"
+              tab === "search" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             }`}
           >
             <Users className="w-4 h-4" />
@@ -75,16 +83,23 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
           </button>
           <button
             onClick={() => setShowGroupModal(true)}
-            className="px-3 py-3 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition"
+            className="px-3 py-3 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
             title="New group chat"
           >
             <Plus className="w-5 h-5" />
           </button>
+          <button
+            onClick={() => setShowSearchModal(true)}
+            className="px-3 py-3 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition"
+            title="Search messages"
+          >
+            <Search className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Search input (People tab) */}
+        {/* People search input */}
         {tab === "search" && (
-          <div className="p-3 border-b bg-gray-50/50">
+          <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -93,7 +108,7 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 autoFocus
-                className="w-full pl-9 pr-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
               />
             </div>
           </div>
@@ -113,21 +128,51 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
                 body='Go to "People" to start a chat, or press + to create a group.'
               />
             ) : (
-              <ul className="divide-y">
-                {conversations.map((c) => {
-                  const isGroup = c.isGroup;
-                  const isOnline = !isGroup && c.otherUser?._id ? onlineSet.has(c.otherUser._id) : false;
-                  return (
-                    <ConversationItem
-                      key={c._id}
-                      conversation={c}
-                      isOnline={isOnline}
-                      isSelected={selectedConversationId === c._id}
-                      onSelect={() => handleSelectConversation(c._id)}
-                    />
-                  );
-                })}
-              </ul>
+              <>
+                {/* Pinned section */}
+                {pinned.length > 0 && (
+                  <>
+                    <SectionHeader label="📌 Pinned" />
+                    <ul className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                      {pinned.map((c) => {
+                        const isOnline = !c.isGroup && c.otherUser?._id ? onlineSet.has(c.otherUser._id) : false;
+                        return (
+                          <ConversationItem
+                            key={c._id}
+                            conversation={c}
+                            isOnline={isOnline}
+                            isSelected={selectedConversationId === c._id}
+                            isPinned={true}
+                            onSelect={() => handleSelectConversation(c._id)}
+                            onTogglePin={() => togglePin({ conversationId: c._id })}
+                          />
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+
+                {/* All chats section */}
+                {pinned.length > 0 && unpinned.length > 0 && (
+                  <SectionHeader label="All Chats" />
+                )}
+                <ul className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                  {unpinned.map((c) => {
+                    const isOnline = !c.isGroup && c.otherUser?._id ? onlineSet.has(c.otherUser._id) : false;
+                    return (
+                      <ConversationItem
+                        key={c._id}
+                        conversation={c}
+                        isOnline={isOnline}
+                        isSelected={selectedConversationId === c._id}
+                        isPinned={false}
+                        onSelect={() => handleSelectConversation(c._id)}
+                        onTogglePin={() => togglePin({ conversationId: c._id })}
+                      />
+                    );
+                  })}
+                </ul>
+              </>
             )
           ) : searchResults === undefined ? (
             <LoadingSkeleton />
@@ -136,22 +181,22 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
           ) : searchResults.length === 0 ? (
             <EmptyState icon="😔" title="No users found" body={`No results for "${searchTerm}".`} />
           ) : (
-            <ul className="divide-y">
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700/50">
               {searchResults.map((user) => {
                 const isOnline = onlineSet.has(user._id);
                 return (
                   <li
                     key={user._id}
                     onClick={() => handleUserClick(user._id)}
-                    className="p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition"
+                    className="p-4 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer flex items-center gap-3 transition"
                   >
                     <Avatar imageUrl={user.imageUrl} name={user.name} isOnline={isOnline} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
-                        {isOnline && <span className="text-xs text-green-600 font-medium shrink-0">Online</span>}
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
+                        {isOnline && <span className="text-xs text-green-600 dark:text-green-400 font-medium shrink-0">Online</span>}
                       </div>
-                      {user.email && <p className="text-xs text-gray-500 truncate">{user.email}</p>}
+                      {user.email && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>}
                     </div>
                   </li>
                 );
@@ -167,16 +212,30 @@ export function Sidebar({ selectedConversationId, onSelectConversation }: Sideba
           onCreated={handleGroupCreated}
         />
       )}
+
+      {showSearchModal && (
+        <SearchModal
+          onClose={() => setShowSearchModal(false)}
+          onSelectConversation={(id) => {
+            onSelectConversation(id);
+            setShowSearchModal(false);
+          }}
+        />
+      )}
     </>
   );
 }
 
-// Each conversation item subscribes to its own unread count
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700/50">
+      {label}
+    </div>
+  );
+}
+
 function ConversationItem({
-  conversation,
-  isOnline,
-  isSelected,
-  onSelect,
+  conversation, isOnline, isSelected, isPinned, onSelect, onTogglePin,
 }: {
   conversation: {
     _id: Id<"conversations">;
@@ -188,9 +247,25 @@ function ConversationItem({
   };
   isOnline: boolean;
   isSelected: boolean;
+  isPinned: boolean;
   onSelect: () => void;
+  onTogglePin: () => void;
 }) {
   const unreadCount = useQuery(api.lastRead.getUnreadCount, { conversationId: conversation._id });
+  const [showContext, setShowContext] = useState(false);
+  const contextRef = useRef<HTMLDivElement>(null);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!showContext) return;
+    const handler = (e: MouseEvent) => {
+      if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
+        setShowContext(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showContext]);
 
   const displayName = conversation.isGroup
     ? (conversation.name ?? "Group Chat")
@@ -205,7 +280,8 @@ function ConversationItem({
   return (
     <li
       onClick={onSelect}
-      className={`p-4 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition ${isSelected ? "bg-blue-50" : ""}`}
+      onContextMenu={(e) => { e.preventDefault(); setShowContext(true); }}
+      className={`relative p-4 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer flex items-center gap-3 transition ${isSelected ? "bg-blue-50 dark:bg-blue-900/30" : ""}`}
     >
       {conversation.isGroup ? (
         <GroupAvatar name={displayName} />
@@ -214,12 +290,13 @@ function ConversationItem({
       )}
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-center gap-2">
-          <p className={`text-sm truncate ${(unreadCount ?? 0) > 0 ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
+          <p className={`text-sm truncate ${(unreadCount ?? 0) > 0 ? "font-semibold text-gray-900 dark:text-white" : "font-medium text-gray-700 dark:text-gray-200"}`}>
             {displayName}
           </p>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
+            {isPinned && <Pin className="w-3 h-3 text-blue-400 dark:text-blue-500" />}
             {conversation.lastMessage && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {formatTimestamp(conversation.lastMessage._creationTime)}
               </span>
             )}
@@ -230,10 +307,30 @@ function ConversationItem({
             )}
           </div>
         </div>
-        <p className={`text-xs truncate mt-0.5 ${(unreadCount ?? 0) > 0 ? "text-gray-700 font-medium" : "text-gray-500"} ${conversation.lastMessage?.deleted ? "italic" : ""}`}>
+        <p className={`text-xs truncate mt-0.5 ${(unreadCount ?? 0) > 0 ? "text-gray-700 dark:text-gray-300 font-medium" : "text-gray-500 dark:text-gray-400"} ${conversation.lastMessage?.deleted ? "italic" : ""}`}>
           {subtitle}
         </p>
       </div>
+
+      {/* Context menu */}
+      {showContext && (
+        <div
+          ref={contextRef}
+          className="absolute right-2 top-8 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1 min-w-[140px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { onTogglePin(); setShowContext(false); }}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+          >
+            {isPinned ? (
+              <><PinOff className="w-4 h-4 text-gray-400" /> Unpin</>
+            ) : (
+              <><Pin className="w-4 h-4 text-blue-500" /> Pin</>
+            )}
+          </button>
+        </div>
+      )}
     </li>
   );
 }
@@ -247,15 +344,15 @@ export function Avatar({
 }) {
   return (
     <div className="relative shrink-0">
-      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden shadow-sm">
+      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center overflow-hidden shadow-sm">
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
         ) : (
-          <span className="text-blue-600 font-semibold text-sm">{name.charAt(0).toUpperCase()}</span>
+          <span className="text-blue-600 dark:text-blue-400 font-semibold text-sm">{name.charAt(0).toUpperCase()}</span>
         )}
       </div>
       {isOnline && (
-        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full" />
       )}
     </div>
   );
@@ -263,17 +360,17 @@ export function Avatar({
 
 function GroupAvatar({ name }: { name: string }) {
   return (
-    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center shadow-sm shrink-0">
-      <Users className="w-5 h-5 text-purple-600" />
+    <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shadow-sm shrink-0">
+      <Users className="w-5 h-5 text-purple-600 dark:text-purple-400" />
     </div>
   );
 }
 
 function EmptyState({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-2 text-gray-400">
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-2 text-gray-400 dark:text-gray-500">
       <span className="text-4xl">{icon}</span>
-      <p className="font-medium text-gray-600">{title}</p>
+      <p className="font-medium text-gray-600 dark:text-gray-300">{title}</p>
       <p className="text-sm">{body}</p>
     </div>
   );
@@ -284,10 +381,10 @@ function LoadingSkeleton() {
     <div className="p-4 space-y-4">
       {[1, 2, 3].map((i) => (
         <div key={i} className="flex items-center gap-3 animate-pulse">
-          <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0" />
+          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 shrink-0" />
           <div className="flex-1 space-y-2">
-            <div className="h-3 bg-gray-200 rounded w-3/4" />
-            <div className="h-2 bg-gray-200 rounded w-1/2" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
+            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
           </div>
         </div>
       ))}
