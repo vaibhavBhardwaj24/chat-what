@@ -129,3 +129,26 @@ export const getMembers = query({
     return await Promise.all(conv.memberIds.map((id) => ctx.db.get(id)));
   },
 });
+
+/** Remove the current user from a group conversation */
+export const leaveGroup = mutation({
+  args: { conversationId: v.id("conversations") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_token", (q) => q.eq("tokenIdentifier", identity.tokenIdentifier))
+      .unique();
+    if (!user) throw new Error("User not found");
+
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv) throw new Error("Conversation not found");
+    if (!conv.isGroup) throw new Error("Cannot leave a DM");
+    if (!conv.memberIds.includes(user._id)) throw new Error("You are not a member");
+
+    const newMembers = conv.memberIds.filter((id) => id !== user._id);
+    await ctx.db.patch(args.conversationId, { memberIds: newMembers });
+  },
+});

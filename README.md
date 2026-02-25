@@ -1,6 +1,6 @@
 # Chat-What 💬
 
-A modern, full-featured real-time chat application built with **Next.js**, **Convex**, and **Clerk**. It supports responsive 1-on-1 direct messages, multi-user group chats, read receipts, real-time typing indicators, user presence (online/offline status), and emoji reactions.
+A modern, full-featured real-time chat application built with **Next.js**, **Convex**, and **Clerk**. It supports 1-on-1 direct messages, multi-user group chats, read receipts, real-time typing indicators, user presence, emoji reactions, message search, pinned conversations, and group management.
 
 ## 🚀 Tech Stack
 
@@ -18,10 +18,15 @@ A modern, full-featured real-time chat application built with **Next.js**, **Con
 - **Rich Chat Engagement**:
   - **Reactions**: React to messages with a fixed set of emojis (👍, ❤️, 😂, 😮, 😢).
   - **Typing Indicators**: See when other users are currently typing in a conversation.
-  - **Read Receipts**: Visual indicators (user avatars) appear under the latest message when read by participants.
+  - **Read Receipts**: User avatars appear under the latest message when read by participants.
+  - **Message Timestamps**: Contextual timestamps shown between message clusters (grouped per 5 minutes).
+  - **Character Limit**: Input enforces a 1,000-character cap with a live colour-coded counter (appears at 70% usage).
 - **User Presence**: A heartbeat mechanism tracks and displays who is currently online.
-- **Conversation Organization**: Pin important or frequent conversations to the top of your sidebar.
-- **Global Search**: Search across your conversations for specific text and discover new users to chat with.
+- **Conversation Organization**: Pin important conversations to the top of your sidebar.
+- **Global Search**: Search across all your conversations for specific message text.
+- **Group Management**:
+  - **Member Panel**: Click the 👥 icon in a group header to view all participants inline.
+  - **Leave Group**: A dedicated leave button (with a confirm prompt) lets any member exit a group at any time.
 
 ---
 
@@ -96,6 +101,9 @@ Next.js components use Convex's React hooks (`useQuery`, `useMutation`). Instead
 
 ### **4. Read Receipts**
 Whenever a user opens a conversation, the client fires the `markRead` mutation, recording the current timestamp in `lastRead`. For other users, the `getReaders` query fetches who has a `readTime` newer than the latest message's creation time, rendering their avatars dynamically as read receipts.
+
+### **5. Leave Group**
+The `conversations.leaveGroup` mutation filters the current user out of the `memberIds` array and patches the document. The UI shows a one-step confirmation before calling the mutation, then navigates back to the sidebar automatically.
 
 ---
 

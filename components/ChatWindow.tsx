@@ -5,11 +5,12 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSession } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowLeft, Send, ChevronDown, Users, RefreshCw } from "lucide-react";
+import { ArrowLeft, Send, ChevronDown, Users, RefreshCw, ChevronUp, LogOut } from "lucide-react";
 import { Avatar } from "@/components/Sidebar";
 import { MessageBubble } from "@/components/MessageBubble";
 
 const SCROLL_THRESHOLD = 120;
+const MAX_CHARS = 1000;
 
 interface ChatWindowProps {
   conversationId: Id<"conversations">;
@@ -23,6 +24,8 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [showMembers, setShowMembers] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   // @mention autocomplete state
   const [mentionSearch, setMentionSearch] = useState<string | null>(null); // null = not active
@@ -46,6 +49,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
   const sendMessage = useMutation(api.messages.send);
   const setTyping = useMutation(api.typing.setTyping);
   const markRead = useMutation(api.lastRead.markRead);
+  const leaveGroup = useMutation(api.conversations.leaveGroup);
 
   const conversation = conversations?.find((c) => c._id === conversationId);
   const isGroup = conversation?.isGroup ?? false;
@@ -121,6 +125,7 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
 
   /** Detect @ trigger and update mention autocomplete state */
   const handleTyping = useCallback((value: string) => {
+    if (value.length > MAX_CHARS) return; // enforce char limit
     setInput(value);
     if (!value.trim()) return;
     setTyping({ conversationId }).catch(console.error);
@@ -228,7 +233,69 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
             </div>
           )}
         </div>
+        {/* Group members toggle button */}
+        {isGroup && (
+          <button
+            onClick={() => setShowMembers((v) => !v)}
+            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500 dark:text-gray-400"
+            title={showMembers ? "Hide members" : "Show members"}
+          >
+            {showMembers ? <ChevronUp className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+          </button>
+        )}
+        {/* Leave group button */}
+        {isGroup && (
+          confirmLeave ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={async () => {
+                  await leaveGroup({ conversationId }).catch(console.error);
+                  setConfirmLeave(false);
+                  onBack();
+                }}
+                className="px-2.5 py-1 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-full transition"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setConfirmLeave(false)}
+                className="px-2.5 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-full transition"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmLeave(true)}
+              className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+              title="Leave group"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          )
+        )}
       </div>
+
+      {/* Group Members Panel */}
+      {isGroup && showMembers && (
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/80 flex flex-col gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Members · {typedMembers.length}</p>
+          <div className="flex flex-wrap gap-3">
+            {typedMembers.map((m) => (
+              <div key={m._id} className="flex flex-col items-center gap-1 w-14">
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center overflow-hidden shadow-sm shrink-0">
+                  {m.imageUrl ? (
+                    <img src={m.imageUrl} alt={m.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-blue-600 dark:text-blue-400 font-semibold text-sm">{m.name.charAt(0).toUpperCase()}</span>
+                  )}
+                </div>
+                <span className="text-[10px] text-gray-600 dark:text-gray-300 truncate w-full text-center">{m.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Messages Area */}
       <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -355,24 +422,39 @@ export function ChatWindow({ conversationId, onBack }: ChatWindowProps) {
       )}
 
       {/* Input */}
-      <form onSubmit={handleSend} className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={isGroup ? "Type a message... (@ to mention)" : "Type a message..."}
-          value={input}
-          onChange={(e) => handleTyping(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-          aria-label="Send"
-        >
-          <Send className="w-4 h-4" />
-        </button>
+      <form onSubmit={handleSend} className="flex flex-col gap-1 px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={isGroup ? "Type a message... (@ to mention)" : "Type a message..."}
+            value={input}
+            onChange={(e) => handleTyping(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            maxLength={MAX_CHARS}
+            className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            aria-label="Send"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+        {/* Character counter — only show when getting close to limit */}
+        {input.length > MAX_CHARS * 0.7 && (
+          <div className={`text-right text-[11px] pr-1 ${
+            input.length >= MAX_CHARS
+              ? "text-red-500 font-semibold"
+              : input.length >= MAX_CHARS * 0.9
+              ? "text-orange-500"
+              : "text-gray-400 dark:text-gray-500"
+          }`}>
+            {input.length}/{MAX_CHARS}
+          </div>
+        )}
       </form>
     </div>
   );
