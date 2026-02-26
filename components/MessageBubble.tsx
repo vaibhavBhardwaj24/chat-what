@@ -6,6 +6,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useState, useRef } from "react";
 import { SmileIcon, Trash2, Pencil, Check, X } from "lucide-react";
 import { formatTimestamp } from "@/lib/format-timestamp";
+import { LinkPreview } from "@/components/LinkPreview";
 
 const ALLOWED_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
 
@@ -77,6 +78,10 @@ export function MessageBubble({
   const toggleReaction = useMutation(api.reactions.toggleReaction);
   const deleteMessage = useMutation(api.messages.deleteMessage);
   const editMessage = useMutation(api.messages.editMessage);
+
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const urls = message.content.match(urlRegex) || [];
+  const firstUrl = urls[0];
 
   const sender = isGroup ? members.find((m) => m._id === message.senderId) : null;
 
@@ -225,6 +230,11 @@ export function MessageBubble({
                 <span className={`text-[10px] ml-1.5 ${isMe ? "text-blue-200" : "text-gray-400 dark:text-gray-500"}`}>(edited)</span>
               )}
             </div>
+          )}
+
+          {/* Link Preview */}
+          {!message.deleted && !editing && firstUrl && (
+             <LinkPreview url={firstUrl} />
           )}
 
           {/* Reactions */}

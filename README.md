@@ -21,6 +21,7 @@ A modern, full-featured real-time chat application built with **Next.js**, **Con
   - **Read Receipts**: User avatars appear under the latest message when read by participants.
   - **Message Timestamps**: Contextual timestamps shown between message clusters (grouped per 5 minutes).
   - **Character Limit**: Input enforces a 1,000-character cap with a live colour-coded counter (appears at 70% usage).
+  - **Link Previews**: Automatically fetches and beautifully renders rich Open Graph previews for URLs shared in chats.
 - **User Presence**: A heartbeat mechanism tracks and displays who is currently online.
 - **Conversation Organization**: Pin important conversations to the top of your sidebar.
 - **Global Search**: Search across all your conversations for specific message text.

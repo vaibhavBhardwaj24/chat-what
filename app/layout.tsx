@@ -16,8 +16,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ChatApp",
-  description: "A real-time chat application",
+  title: "Chat-What",
+  description: "A modern, full-featured real-time chat application",
+  openGraph: {
+    title: "Chat-What",
+    description: "A modern, full-featured real-time chat application built with Next.js, Convex, and Clerk.",
+    siteName: "Chat-What",
+    type: "website",
+    locale: "en_US",
+    images: [
+      {
+        url: "/og-image.png", // Provide a default or placeholder OG image route if necessary
+        width: 1200,
+        height: 630,
+        alt: "Chat-What Preview",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({
